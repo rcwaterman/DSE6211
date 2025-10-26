@@ -1,0 +1,112 @@
+---
+title: "Lab_7: K-Means Clustering"
+author: "Ryan Waterman"
+date: "2025-10-24"
+output: html_document
+---
+# K-Means Clustering
+
+In this lab, we use the ‘NbClust’ and ‘kmeans’ R functions to implement k-means clustering on the lodgepole
+pine data. We first load the R libraries we will be using. The ‘NbClust’ function is available in the ‘NbClust’
+R library and the ‘kmeans’ function is available in base R. The ‘tidymodels’ and ‘dplyr’ R libraries are also
+loaded, since we will be using the ‘intitial_split’ function (from ‘tidymodels’) to partition the data into
+training and test sets, as well as the ‘select’ function (from ‘dplyr’) to select specific columns.
+
+```{r}
+library(tidymodels)
+library(dplyr)
+library(NbClust)
+```
+
+*K-Means Clustering*
+
+Let’s see if the observations can be clustered based on their horizontal distance to important landmarks (horizontal_distance_to_hydrology, horizontal_distance_to_roadways, and horizontal_distance_to_fire_points). In practice, we can cluster based on any features we think are relevant; this is where the subjective part of unsupervised learning comes into play, since our analysis is often guided by subject matter knowledge and expertise.
+
+Before we implement k-means clustering, we center and scale the features in the training and test sets, which is critical for k-means clustering for the reasons discussed during the live session. We also only keep the features that will be included in the clustering analysis: horizontal_distance_to_hydrology, horizontal_distance_to_roadways, and horizontal_distance_to_fire_points.
+
+```{r}
+data <- read.csv("lodgepole_data.csv")
+split <- initial_split(data, prop = 0.75, strata = lodgepole_pine)
+training_set <- training(split) %>% select(horizontal_distance_to_hydrology,
+horizontal_distance_to_roadways,
+horizontal_distance_to_fire_points)
+test_set <- testing(split) %>% select(horizontal_distance_to_hydrology,
+horizontal_distance_to_roadways,
+horizontal_distance_to_fire_points)
+# center and scale the features
+test_set <- scale(test_set,
+center = apply(training_set, 2, mean),
+scale = apply(training_set, 2, sd))
+training_set <- scale(training_set)
+
+```
+
+Now that the features have been centered and scaled, we implement k-means in R using the ‘NbClust’ and
+‘k-means’ functions. We first use the ‘NbClust’ function to determine if there is an optimal number of clusters
+according to the 26 criteria incorporated into this function. We use a random sample of 1000 rows of the
+original training set, since the ‘NbClust’ function can take a long time to run on large datasets. We set the
+seed for random number generation, so the exact same results will be obtained when run on your machine
+(otherwise, the results may be different, since the sample of 1000 rows may be different).
+
+```{r}
+set.seed(123)
+nc <- NbClust(training_set[sample(nrow(training_set), 1000), ],
+              min.nc = 2, max.nc = 10, method = "kmeans")
+```
+
+```{r}
+km_clusters <- kmeans(training_set, centers = 4)
+```
+
+After calculating the clusters, we can append the cluster labels to the training set. Now, we can use the
+cluster labels as a categorical feature in a supervised learning model (such as a dense feed-forward neural
+network). As with any other categorical feature, we need to encode the cluster label (such as using one-hot
+encoding) before applying a supervised learning model.
+
+```{r}
+cluster_number <- data.frame(cluster_number = km_clusters$cluster)
+training_set_with_cluster_num <- cbind(training_set, cluster_number)
+head(training_set_with_cluster_num)
+```
+
+In this lab, we used the ‘NbClust’ and ‘kmeans’ functions to implement k-means clustering. However, several
+different methods for implementing clustering exist and are also implemented in R. Look into the different
+methods, as well as other arguments, that are implemented in the ‘NbClust’ function discussed above.
+
+*Exercises*
+
+1) Why is it good practice to center and scale before applying k-means clustering?
+
+*Centering is good practice because it shifts the mean value of each feature to 0, which doesn't directly affect the K-Means clustering algorithm, but is necessary for scaling. Scaling is far more critical for K-Means clustering, as it ensures that larger features cannot have disproportionately large clusters.*
+
+2) Print the cluster sizes and centers to the R console. Include a screenshot of the output.
+```{r}
+km_clusters$size
+km_clusters$centers
+```
+
+3) Use the aggregate() function to calculate the mean of each variable within each cluster. Include a
+screenshot of the output.
+
+```{r}
+aggregate(. ~ cluster_number, 
+          data = training_set_with_cluster_num, 
+          FUN = mean)
+```
+
+4) Assign the observations in test_set to the clusters found using the sample of the observations in
+training_set above. Include a screenshot of the output. Hint: a function in the ‘clue’ R library can be
+used for this.
+
+```{r}
+library(clue)
+
+test_cluster_assignments <- cl_predict(km_clusters, test_set)
+head(test_cluster_assignments)
+
+test_set_with_cluster_num <- cbind(as.data.frame(test_set), cluster_number = test_cluster_assignments)
+head(test_set_with_cluster_num)
+```
+
+
+
